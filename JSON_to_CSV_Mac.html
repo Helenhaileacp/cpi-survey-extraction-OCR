@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JSON to CSV - Mac</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#16202b; --steel:#33414f; --paper:#f5f4f0; --line:#d8d5cc;
+    --accent:#e8650d; --accent-dk:#b84e06; --ok:#1d7a4f; --warn:#b3261e;
+    --card:#ffffff; --mono:ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--paper);color:var(--ink);min-height:100vh;padding:28px 20px 60px}
+  .wrap{max-width:920px;margin:0 auto}
+  header{display:flex;align-items:baseline;justify-content:space-between;border-bottom:3px solid var(--ink);padding-bottom:14px;margin-bottom:22px;flex-wrap:wrap;gap:8px}
+  h1{font-size:21px}
+  header .sub{font-family:var(--mono);font-size:12px;color:var(--steel)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:20px;margin-bottom:16px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--steel);margin-bottom:12px}
+  label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--steel);margin:12px 0 4px}
+  input[type=text],textarea,select{font:inherit;font-size:13px;width:100%;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:#fff;color:var(--ink)}
+  textarea{font-family:var(--mono);font-size:12px;line-height:1.45;resize:vertical}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  @media(max-width:700px){.row3{grid-template-columns:1fr}}
+  .drop{border:2px dashed var(--line);border-radius:8px;padding:30px 20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+  .drop:hover,.drop.over{border-color:var(--accent);background:#fdf3ea}
+  .drop p{font-size:14px;color:var(--steel)}
+  .drop strong{color:var(--ink)}
+  button{font:inherit;font-weight:600;font-size:14px;border:none;border-radius:6px;padding:11px 20px;cursor:pointer;transition:background .15s}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .btn-go{background:var(--accent);color:#fff}
+  .btn-go:hover:not(:disabled){background:var(--accent-dk)}
+  .btn-quiet{background:#e9e7e0;color:var(--ink)}
+  .btn-quiet:hover:not(:disabled){background:#ddd9cf}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+  .check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--steel);margin-top:10px}
+  .check input{width:auto}
+  .flagline{margin-top:12px;font-size:13px;padding:9px 12px;border-radius:6px;display:none}
+  .flagline.ok{display:block;background:#e9f4ee;color:var(--ok)}
+  .flagline.bad{display:block;background:#fbeae9;color:var(--warn)}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--steel);position:sticky;top:0;background:#fff}
+  td{font-family:var(--mono)}
+  .tablebox{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:12px}
+  .note{font-size:12.5px;color:var(--steel);line-height:1.5;margin-top:10px}
+  .filelist{font-family:var(--mono);font-size:12px;color:var(--steel);margin-top:10px}
+  .filelist .ok{color:var(--ok)} .filelist .bad{color:var(--warn)}
+  #fileInput{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>JSON to CSV - Mac</h1>
+    <div class="sub">self-contained browser tool for Mac or PC → one combined CSV</div>
+  </header>
+
+  <div class="card">
+    <h2>1 · Load JSON</h2>
+    <div class="drop" id="drop">
+      <p><strong>Drop one or more .json files here</strong> or click to browse<br>
+      Accepts the extractor's results JSON, or any JSON array of flat objects. Multiple files are merged in order.</p>
+    </div>
+    <input type="file" id="fileInput" accept="application/json,.json" multiple>
+    <div class="filelist" id="fileList"></div>
+    <div class="flagline" id="loadMsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>2 · Options</h2>
+    <div class="row3">
+      <div>
+        <label>Column order</label>
+        <select id="colMode">
+          <option value="auto">Auto — union of keys, in first-seen order</option>
+          <option value="custom" selected>Custom — use the survey headers below</option>
+        </select>
+      </div>
+      <div>
+        <label>Dedupe by ID column (optional)</label>
+        <input type="text" id="dedupeCol" placeholder="e.g. survey_id — keeps last occurrence">
+      </div>
+      <div>
+        <label>Pages per survey packet</label>
+        <input type="text" id="packetSize" value="4">
+      </div>
+    </div>
+    <div class="row3" style="margin-top:12px">
+      <div>
+        <label>Output values</label>
+        <select id="boolMode">
+          <option value="10">Booleans as 1 / 0</option>
+          <option value="keep">Keep values as-is</option>
+        </select>
+      </div>
+    </div>
+    <label>Custom column headers, in order (one per line — used when "Custom" is selected; columns missing from a record are left blank/0)</label>
+    <textarea id="headersBox" rows="6" placeholder="survey_id&#10;language&#10;q1_laborer&#10;..."></textarea>
+    <div class="check"><input type="checkbox" id="skipFlagged"><label for="skipFlagged" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px">Exclude packets marked "flag" in extractor JSON</label></div>
+    <div class="btnrow">
+      <button class="btn-go" id="btnBuild" disabled>Build table</button>
+    </div>
+  </div>
+
+  <div class="card" id="outCard" style="display:none">
+    <h2>3 · Result</h2>
+    <div class="btnrow" style="margin-top:0">
+      <button class="btn-go" id="btnCsv">Download CSV</button>
+      <button class="btn-quiet" id="btnXlsx">Download Excel (.xlsx)</button>
+      <span class="note" id="counts" style="margin:0"></span>
+    </div>
+    <div class="tablebox">
+      <table><thead id="thead"></thead><tbody id="tbody"></tbody></table>
+    </div>
+    <p class="note">Preview shows all rows and all columns. Downloads contain everything.</p>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let records = [];          // flat objects
+let loadedFiles = [];      // {name, count, skippedFlags}
+let built = {headers:[], rows:[]};
+const SURVEY_HEADERS = ["survey_id","language","q1_laborer","q1_equipment_operator","q1_foreman","q1_site_leadership","q1_quality_commissioning","q1_electrician","q1_other","q1_other_text","q2_solv","q2_renewableworks","q2_other_subcontractor","q3_solar","q3_battery_storage","q4_being_on_road","q4_long_hours","q4_lack_management_support","q4_need_safety_training","q4_coworkers_need_skills","q4_hard_time_housing","q4_inconsistent_schedule","q4_physical_demands","q4_right_tools_supplies","q4_other","q4_other_text","q5_1_month","q5_2_3_months","q5_4_5_months","q5_6plus_months","q6_grow_career","q6_more_pay","q6_retirement_savings","q6_healthcare","q6_safety_priority","q6_paid_time_off","q6_discounts_boots_tools","q6_company_truck","q6_coworkers_known","q6_longer_income_guarantee","q6_better_weather","q6_closer_family","q6_supportive_culture","q7_rv_campground","q7_hotel_motel","q7_apartment","q7_airbnb_vrbo","q7_other","q7_other_text","q8_worried_money","q8_balance_work_home","q8_injured_kept_working","q8_mental_health","q8_proper_training","q9_low_cost_training","q9_career_mentorship","q9_off_season_work","q9_discounts_tools","q9_realtime_advice","q9_year_round_health_ins","q9_mobile_clinic","q9_certifications","q9_financial_advice","q9_mental_health_support","q9_jobs_board","q9_other","q9_other_text","q10_monthly_bills","q10_daily_costs","q10_savings_big_things","q10_pay_truck","q10_pay_down_debt","q10_manage_finances","q10_invest_money","q10_other","q10_other_text","q11_short_term_work","q11_workshops_finances","q11_build_credit","q11_trusted_person","q11_low_interest_loans","q11_app_track_finances","q11_discounts_items","q11_other","q11_other_text","q12_linkedin","q12_tiktok","q12_reddit","q12_whatsapp","q12_facebook","q12_discord","q12_instagram","q12_twitter_x","q12_other","q12_other_text","q13_influencers","q14_rock","q14_country","q14_spanish_latin","q14_hip_hop_rap","q14_pop","q14_other","q14_other_text","q15_concert","q16_sporting_event","q17_tv_shows","q18_0_1_years","q18_2_3_years","q18_4_5_years","q18_6_8_years","q18_9plus_years","q19_male","q19_female","q19_nonbinary","q19_trans","q20_white","q20_hispanic_latino","q20_black_african_american","q20_asian_pacific_islander","q20_native_american","q20_two_or_more","q20_other","q21_18_24","q21_25_29","q21_30_35","q21_36_40","q21_41_45","q21_46_50","q21_50plus","q22_english","q22_spanish","q22_other","q23_married_yes","q23_married_no","q24_kids_yes","q24_kids_no","q25_kids_travel_yes","q25_kids_travel_no","q25_kids_travel_sometimes","other_thoughts","contact_first_name","contact_last_name","contact_email","contact_phone"];
+const KEY_ALIASES = {
+  q5_one_month: "q5_1_month",
+  q5_two_three_months: "q5_2_3_months",
+  q5_four_five_months: "q5_4_5_months",
+  q5_six_plus_months: "q5_6plus_months"
+};
+const Q8_ANSWER_HEADERS = ["q8_worried_money_answer","q8_balance_work_home_answer","q8_injured_kept_working_answer","q8_mental_health_answer","q8_proper_training_answer"];
+const q8InsertAt = SURVEY_HEADERS.indexOf("q9_low_cost_training");
+if(q8InsertAt >= 0 && !SURVEY_HEADERS.includes(Q8_ANSWER_HEADERS[0])) SURVEY_HEADERS.splice(q8InsertAt, 0, ...Q8_ANSWER_HEADERS);
+const TEXT_FIELDS = new Set(["survey_id","language","q1_other_text","q4_other_text","q7_other_text","q9_other_text","q10_other_text","q11_other_text","q12_other_text","q13_influencers","q14_other_text","other_thoughts","contact_first_name","contact_last_name","contact_email","contact_phone", ...Q8_ANSWER_HEADERS]);
+$('headersBox').value = SURVEY_HEADERS.join('\n');
+
+/* ---------- loading ---------- */
+$('drop').onclick = () => $('fileInput').click();
+$('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('over'); };
+$('drop').ondragleave = () => $('drop').classList.remove('over');
+$('drop').ondrop = e => { e.preventDefault(); $('drop').classList.remove('over'); handleFiles(e.dataTransfer.files); };
+$('fileInput').onchange = e => handleFiles(e.target.files);
+
+function normalize(parsed, skipFlagged){
+  // Returns {recs:[], skipped:n}
+  let arr = extractRecordItems(parsed);
+  const recs = []; let skipped = 0;
+  if(isPaddlePageArray(arr)){
+    const packetSize = Math.max(1, parseInt($('packetSize').value,10) || 4);
+    const usable = arr.length - (arr.length % packetSize);
+    for(let i=0; i<usable; i += packetSize){
+      recs.push(recordFromPaddlePages(arr.slice(i, i + packetSize), i / packetSize + 1));
+    }
+    return {recs, skipped: arr.length - usable};
+  }
+  for(const item of arr){
+    if(item == null) continue;
+    // extractor format: {packet, status, notes, data:{...}}
+    if(Array.isArray(item)){
+      for(const sub of item) if(sub && typeof sub === 'object') recs.push(flatten(sub));
+    } else if(typeof item === 'object' && Array.isArray(item.data)){
+      if(skipFlagged && item.status === 'flag'){ skipped += item.data.length; continue; }
+      for(const sub of item.data) if(sub && typeof sub === 'object') recs.push(flatten(sub));
+    } else if(typeof item === 'object' && item.data && typeof item.data === 'object'){
+      if(skipFlagged && item.status === 'flag'){ skipped++; continue; }
+      recs.push(flatten(item.data));
+    } else if(typeof item === 'object'){
+      recs.push(flatten(item));
+    }
+  }
+  return {recs, skipped};
+}
+function extractRecordItems(value){
+  if(Array.isArray(value)) return value;
+  if(!value || typeof value !== 'object') return [];
+  const recordArrayKeys = ['results','records','responses','items','rows','data'];
+  for(const key of recordArrayKeys){
+    if(Array.isArray(value[key])) return value[key];
+  }
+  for(const key of recordArrayKeys){
+    if(value[key] && typeof value[key] === 'object'){
+      const nested = extractRecordItems(value[key]);
+      if(nested.length && (key === 'data' || !(nested.length === 1 && nested[0] === value[key]))) return nested;
+    }
+  }
+  for(const child of Object.values(value)){
+    if(child && typeof child === 'object'){
+      const nested = extractRecordItems(child);
+      if(nested.length && !(nested.length === 1 && nested[0] === child)) return nested;
+    }
+  }
+  return [value];
+}
+function isPaddlePageArray(arr){
+  return Array.isArray(arr) && arr.length > 1 && arr.every(item =>
+    item && typeof item === 'object' && (item.prunedResult || item.markdown || item.inputImage)
+  );
+}
+function pageText(item){
+  const parts = [];
+  if(typeof item.markdown === 'string') parts.push(item.markdown);
+  else if(item.markdown && typeof item.markdown.text === 'string') parts.push(item.markdown.text);
+  const blocks = item.prunedResult && Array.isArray(item.prunedResult.parsing_res_list) ? item.prunedResult.parsing_res_list : [];
+  for(const b of blocks) if(b && typeof b.block_content === 'string') parts.push(b.block_content);
+  return parts.join('\n');
+}
+function recordFromPaddlePages(pages, packet){
+  const text = pages.map(pageText).join('\n\n--- PAGE BREAK ---\n\n');
+  const rec = blankSurveyRecord();
+  const id = text.match(/\bCPI[-\s]?\d{3,6}\b/i);
+  if(id) rec.survey_id = id[0].toUpperCase().replace(/\s+/g, '-');
+  if(/\bespa[ñn]ol\b|\bspanish\b|masculino|casado|hijos menores|idioma principal/i.test(text)) rec.language = 'Spanish';
+  else if(/\benglish\b|construction worker survey/i.test(text)) rec.language = 'English';
+  applySurveyRules(rec, text);
+  rec.source_packet = packet;
+  rec.source_pages = `${(packet - 1) * pages.length + 1}-${packet * pages.length}`;
+  return rec;
+}
+function blankSurveyRecord(){
+  const rec = {};
+  for(const h of SURVEY_HEADERS) rec[h] = TEXT_FIELDS.has(h) ? '' : 0;
+  return rec;
+}
+function cleanText(s){
+  return String(s || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&[#a-z0-9]+;/gi, ' ')
+    .replace(/[‐‑–—]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function stripPrintedAnswerNoise(s){
+  return cleanText(s)
+    .replace(/\$[^$]*\$/g, '')
+    .replace(/[☐☑□✓✔×]/g, '')
+    .replace(/\bImage\b/gi, '')
+    .replace(/^[:_\-\s]+/, '')
+    .replace(/_{2,}/g, '')
+    .replace(/\bOther,\s*(write|escriba).*/i, '')
+    .replace(/\bOtro,\s*escriba.*/i, '')
+    .replace(/\bhere:?\s*/i, '')
+    .replace(/\baqu[ií]:?\s*/i, '')
+    .trim();
+}
+function looksLikePrintedPrompt(s){
+  return !s ||
+    /^#+$/.test(s) ||
+    /Please share any other ideas/i.test(s) ||
+    /Por favor comparta cualquier otra idea/i.test(s) ||
+    /Would you like to (?:get|receive) updates/i.test(s) ||
+    /Le gustar[ií]a recibir actualizaciones/i.test(s) ||
+    /All information is anonymous/i.test(s) ||
+    /Toda esta información es anónima/i.test(s) ||
+    /^\d+\.\s/.test(s) ||
+    /Check your TOP|Check 1 box|Marque|Marca todas/i.test(s) ||
+    /We know it is difficult|Think about your co-workers/i.test(s) ||
+    /Which benefits|What are your top financial/i.test(s);
+}
+function textBetween(text, startRegex, endRegex){
+  const clean = cleanText(text);
+  const start = startRegex.exec(clean);
+  if(!start) return '';
+  const from = start.index + start[0].length;
+  const rest = clean.slice(from);
+  const end = endRegex ? endRegex.exec(rest) : null;
+  return stripPrintedAnswerNoise(end ? rest.slice(0, end.index) : rest);
+}
+function rawSection(text, startRegex, endRegex){
+  const raw = String(text || '');
+  const start = startRegex.exec(raw);
+  if(!start) return '';
+  const rest = raw.slice(start.index + start[0].length);
+  const end = endRegex ? endRegex.exec(rest) : null;
+  return end ? rest.slice(0, end.index) : rest;
+}
+function sameLineAnswer(section, labelRegex){
+  const raw = String(section || '').replace(/<[^>]+>/g, '\n');
+  const lines = raw.split(/\r?\n/);
+  for(const line of lines){
+    const m = labelRegex.exec(line);
+    if(!m) continue;
+    let candidate = line.slice(m.index + m[0].length);
+    candidate = stripPrintedAnswerNoise(candidate);
+    if(looksLikePrintedPrompt(candidate)) return '';
+    return candidate;
+  }
+  return '';
+}
+function freeTextAnswer(section, labelRegex){
+  const raw = String(section || '').replace(/<[^>]+>/g, '\n');
+  const m = labelRegex.exec(raw);
+  if(!m) return '';
+  const after = raw.slice(m.index + m[0].length);
+  const lines = after.split(/\r?\n/).map(stripPrintedAnswerNoise).filter(Boolean);
+  const answerLines = [];
+  for(const line of lines){
+    if(looksLikePrintedPrompt(line)) break;
+    if(/^(?:Other|Otro)\b/i.test(line)) continue;
+    if(/^\d+\.\s/.test(line)) break;
+    if(/^(?:Laborer|Equipment|Foreman|Site|Quality|Electrician|Being on the road|Long hours|Lack of|Need for|Co-workers|Hard time|Inconsistent|Physical|Not having|RV\/Campground|Hotel\/Motel|Apartment|Airbnb|VRBO)\b/i.test(line)) continue;
+    answerLines.push(line);
+    if(answerLines.join(' ').length > 300) break;
+  }
+  const answer = answerLines.join(' ').trim();
+  return looksLikePrintedPrompt(answer) ? '' : answer;
+}
+function sectionAnswer(text, startRegex, endRegex, labelRegex){
+  const section = rawSection(text, startRegex, endRegex);
+  return sameLineAnswer(section, labelRegex) || freeTextAnswer(section, labelRegex);
+}
+function tableAfterLabel(text, labelRegex){
+  const raw = String(text || '');
+  const m = labelRegex.exec(raw);
+  if(!m) return '';
+  const rest = raw.slice(m.index + m[0].length);
+  const tm = /<table[\s\S]*?<\/table>/i.exec(rest);
+  return tm ? tm[0] : '';
+}
+function tableCellText(tableHtml){
+  const out = [];
+  const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+  let m;
+  while((m = cellRe.exec(tableHtml))){
+    const txt = cleanText(m[1]).replace(/\bImage\b/gi, '').trim();
+    if(txt) out.push(txt);
+  }
+  return out.join('');
+}
+function extractPhone(tableHtml){
+  return tableCellText(tableHtml).replace(/[^\d]/g, '');
+}
+function checkedNear(text, labelRegex){
+  const raw = String(text || '');
+  const clean = cleanText(raw);
+  const m = labelRegex.exec(clean);
+  if(!m) return false;
+  const start = m.index;
+  const before = clean.slice(Math.max(0, start - 12), start);
+  const after = clean.slice(start, Math.min(clean.length, start + m[0].length + 8));
+  if(/[☑✓✔×X/]/.test(before) || /^[\s:;,-]*[☑✓✔×X/]/.test(after)) return true;
+  if(/[☐□○O]\s*$/.test(before)) return false;
+  const lineStart = clean.lastIndexOf('.', start) + 1;
+  const segment = clean.slice(Math.max(0, lineStart), Math.min(clean.length, start + m[0].length + 80));
+  return !/[☐□]\s*$/.test(before) && /[☐□☑✓✔×X/]/.test(segment) && start - lineStart < 8;
+}
+function applyDefs(rec, text, defs){
+  for(const [field, ...patterns] of defs){
+    if(patterns.some(p => checkedNear(text, p))) rec[field] = 1;
+  }
+}
+function gridRowChecked(text, rowRegex){
+  const clean = cleanText(text);
+  const m = rowRegex.exec(clean);
+  if(!m) return false;
+  const row = clean.slice(m.index, Math.min(clean.length, m.index + 380));
+  return /[☑✓✔×X/]/.test(row) || />\s*\/\s*</.test(row);
+}
+function q8Answer(text, rowRegex){
+  const raw = String(text || '');
+  const clean = cleanText(raw);
+  const m = rowRegex.exec(clean);
+  if(!m) return '';
+  const row = clean.slice(m.index, Math.min(clean.length, m.index + 520));
+  const rows = raw.match(/<tr>[\s\S]*?<\/tr>/gi) || [];
+  const htmlRowMatch = rows.find(r => rowRegex.test(cleanText(r)));
+  const source = htmlRowMatch || row;
+  const cells = [];
+  const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+  let cell;
+  while((cell = cellRe.exec(source))) cells.push(cleanText(cell[1]));
+  if(cells.length >= 7){
+    const labels = ["None","A few","About half","Most","All","N/A"];
+    const spanish = ["None","A few","About half","Most","All","N/A"];
+    for(let i=1;i<cells.length && i<=6;i++){
+      if(/[☑✓✔×X/]/.test(cells[i]) || cells[i] === "/") return labels[i-1] || spanish[i-1] || '';
+    }
+  }
+  const ordered = [
+    ["N/A", /N\/A\s*[☑✓✔×X/]|[☑✓✔×X/]\s*N\/A/i],
+    ["All", /All\s*[☑✓✔×X/]|Todos\s*[☑✓✔×X/]|[☑✓✔×X/]\s*(All|Todos)/i],
+    ["Most", /Most\s*[☑✓✔×X/]|Bastante\s*[☑✓✔×X/]|[☑✓✔×X/]\s*(Most|Bastante)/i],
+    ["About half", /About\s*(?:half|1\/2)|Medio/i],
+    ["A few", /A few|Algunos/i],
+    ["None", /None|Ninguno/i]
+  ];
+  for(const [label, pattern] of ordered) if(pattern.test(row) && /[☑✓✔×X/]/.test(row)) return label;
+  return '';
+}
+function applySurveyRules(rec, text){
+  applyDefs(rec, text, [
+    ['q1_laborer', /Laborer\/Installer/i, /Obrero/i],
+    ['q1_equipment_operator', /Equipment Operator/i, /Operador de Equipo/i],
+    ['q1_foreman', /Foreman/i, /Mayordomo/i],
+    ['q1_site_leadership', /Site Leadership/i, /Liderazgo de sitio/i],
+    ['q1_quality_commissioning', /Quality\/Commissioning/i, /Calidad/i],
+    ['q1_electrician', /Electrician/i, /Electricista/i],
+    ['q1_other', /Other:/i, /Otro:/i],
+    ['q2_solv', /Employee of Solv/i],
+    ['q2_renewableworks', /Employee of RenewableWorks/i],
+    ['q2_other_subcontractor', /other subcontractor/i, /otro subcontratista/i],
+    ['q3_solar', /Solar/i],
+    ['q3_battery_storage', /Battery storage/i, /almacenamiento/i],
+    ['q4_being_on_road', /Being on the road/i, /Estar en camino/i],
+    ['q4_long_hours', /Long hours/i, /Largas horas/i],
+    ['q4_lack_management_support', /Lack of management support/i, /Falta de apoyo/i],
+    ['q4_need_safety_training', /Need for more safety/i, /seguridad/i],
+    ['q4_coworkers_need_skills', /co-workers need more skills/i, /compa.+habilidades/i],
+    ['q4_hard_time_housing', /Hard time finding housing/i, /hospedaje/i],
+    ['q4_inconsistent_schedule', /Inconsistent schedule/i, /Horario.+inconsistente/i],
+    ['q4_physical_demands', /Physical demands/i, /Demandas fisicas/i],
+    ['q4_right_tools_supplies', /right tools/i, /herramientas/i],
+    ['q5_1_month', /1 month/i, /1 mes/i],
+    ['q5_2_3_months', /2\s*-\s*3 months/i],
+    ['q5_4_5_months', /4\s*-\s*5 months/i],
+    ['q5_6plus_months', /6\+ months/i, /6 meses/i],
+    ['q6_grow_career', /Opportunities to grow/i, /crecer/i],
+    ['q6_more_pay', /More pay/i, /mejor pago/i],
+    ['q6_retirement_savings', /retirement savings/i, /401K/i],
+    ['q6_healthcare', /healthcare/i, /seguro medico/i],
+    ['q6_safety_priority', /Safety prioritized/i],
+    ['q6_paid_time_off', /Paid time off/i],
+    ['q6_discounts_boots_tools', /Discounts on things I need/i, /boots, tools, gas/i],
+    ['q6_company_truck', /company truck/i, /camioneta/i],
+    ['q6_coworkers_known', /Coworkers who I know/i],
+    ['q6_longer_income_guarantee', /guaranteed income/i],
+    ['q6_better_weather', /weather conditions/i],
+    ['q6_closer_family', /closer to my family/i],
+    ['q6_supportive_culture', /Supportive company culture/i]
+  ]);
+  applyDefs(rec, text, [
+    ['q7_rv_campground', /RV\/Campground/i, /RV\/ sitio/i],
+    ['q7_hotel_motel', /Hotel\/Motel/i],
+    ['q7_apartment', /Apartment/i, /Apartamento/i],
+    ['q7_airbnb_vrbo', /Airbnb|VRBO/i],
+    ['q9_low_cost_training', /Low-cost training/i, /entrenamiento accesibles/i],
+    ['q9_career_mentorship', /Career mentorship/i, /avanzar en su carrera/i],
+    ['q9_off_season_work', /off-season/i, /meses lentos/i],
+    ['q9_discounts_tools', /Discounts on items like tools/i, /herramientas o equipo/i],
+    ['q9_realtime_advice', /Real-time technical advice/i, /Consejos técnicos/i],
+    ['q9_year_round_health_ins', /Year-round health insurance/i, /Seguro de salud/i],
+    ['q9_mobile_clinic', /mobile clinic/i, /clínica móvil/i],
+    ['q9_certifications', /Certifications/i, /Certificaciones/i],
+    ['q9_financial_advice', /Financial advice/i, /Asesoramiento financiero/i],
+    ['q9_mental_health_support', /Mental health support/i, /Apoyo emocional/i],
+    ['q9_jobs_board', /jobs board/i, /ofertas de trabajo/i],
+    ['q10_monthly_bills', /monthly bills/i, /biles mensuales/i],
+    ['q10_daily_costs', /daily costs/i, /costos diarios/i],
+    ['q10_savings_big_things', /savings.+big things/i, /cosas grandes/i],
+    ['q10_pay_truck', /truck or camper/i, /camioneta o camper/i],
+    ['q10_pay_down_debt', /Paying down other kinds of debt/i, /otros tipos de deudas/i],
+    ['q10_manage_finances', /manage my finances/i, /administrar mis finanzas/i],
+    ['q10_invest_money', /invest/i, /invertir/i]
+  ]);
+  const q8Defs = [
+    ['q8_worried_money', 'q8_worried_money_answer', /worried about money|preocupados por dinero/i],
+    ['q8_balance_work_home', 'q8_balance_work_home_answer', /balance work and home|balance en su trabajo/i],
+    ['q8_injured_kept_working', 'q8_injured_kept_working_answer', /injured on the job|accidentes/i],
+    ['q8_mental_health', 'q8_mental_health_answer', /mental health challenges|problemas emocionales/i],
+    ['q8_proper_training', 'q8_proper_training_answer', /proper training|entrenamiento apropiado/i]
+  ];
+  for(const [boolField, answerField, pattern] of q8Defs){
+    const ans = q8Answer(text, pattern);
+    if(ans){ rec[boolField] = 1; rec[answerField] = ans; }
+    else rec[boolField] = gridRowChecked(text, pattern) ? 1 : rec[boolField];
+  }
+  applyDefs(rec, text, [
+    ['q11_short_term_work', /short-term work/i, /trabajo de corto plazo/i],
+    ['q11_workshops_finances', /Workshops on managing finances/i, /Talleres.+finanzas/i],
+    ['q11_build_credit', /credit score/i, /puntaje de crédito/i],
+    ['q11_trusted_person', /Someone I trust/i, /Alguien de confianza/i],
+    ['q11_low_interest_loans', /Low-interest/i, /Prestamos de bajo/i],
+    ['q11_app_track_finances', /app to track finances/i, /aplicación.+finanzas/i],
+    ['q11_discounts_items', /Discounts on common items/i],
+    ['q12_linkedin', /LinkedIn/i],
+    ['q12_tiktok', /TikTok/i],
+    ['q12_reddit', /Reddit/i],
+    ['q12_whatsapp', /WhatsApp/i],
+    ['q12_facebook', /Facebook/i],
+    ['q12_discord', /Discord/i],
+    ['q12_instagram', /Instagram/i],
+    ['q12_twitter_x', /Twitter\/X/i],
+    ['q14_rock', /Rock/i],
+    ['q14_country', /Country/i],
+    ['q14_spanish_latin', /Spanish\/Latin|Español\/ Latino/i],
+    ['q14_hip_hop_rap', /Hip Hop/i, /Reggaet/i],
+    ['q14_pop', /Pop/i],
+    ['q18_0_1_years', /0\s*-\s*1 years|0\s*-\s*1 año/i],
+    ['q18_2_3_years', /2\s*-\s*3 years|2\s*-\s*3 años/i],
+    ['q18_4_5_years', /4\s*-\s*5 years|4\s*-\s*5 años/i],
+    ['q18_6_8_years', /6\s*-\s*8 years|6\s*-\s*8 años/i],
+    ['q18_9plus_years', /9\+ years|9 o más/i],
+    ['q19_male', /Male|Masculino/i],
+    ['q19_female', /Female|Femenino/i],
+    ['q19_nonbinary', /Nonbinary|No binario/i],
+    ['q19_trans', /Trans/i]
+  ]);
+  applyDefs(rec, text, [
+    ['q20_white', /White|Blanco/i],
+    ['q20_hispanic_latino', /Hispanic\/Latino|Hispano/i],
+    ['q20_black_african_american', /Black\/African American|Afroamericano/i],
+    ['q20_asian_pacific_islander', /Asian\/Pacific Islander|Asiático/i],
+    ['q20_native_american', /Native American|Nativo/i],
+    ['q20_two_or_more', /Two or more|Dos o más/i],
+    ['q21_18_24', /18\s*-\s*24/i],
+    ['q21_25_29', /25\s*-\s*29/i],
+    ['q21_30_35', /30\s*-\s*35/i],
+    ['q21_36_40', /36\s*-\s*40/i],
+    ['q21_41_45', /41\s*-\s*45/i],
+    ['q21_46_50', /46\s*-\s*50/i],
+    ['q21_50plus', /50\+/i],
+    ['q22_english', /English|Ingles/i],
+    ['q22_spanish', /Spanish|Español/i],
+    ['q23_married_yes', /Yes|Si/i],
+    ['q23_married_no', /No/i],
+    ['q24_kids_yes', /Yes|Si/i],
+    ['q24_kids_no', /No/i],
+    ['q25_kids_travel_yes', /Yes|Si/i],
+    ['q25_kids_travel_no', /No/i],
+    ['q25_kids_travel_sometimes', /Sometimes|A veces/i]
+  ]);
+  rec.q15_concert = /15\..{0,180}(?:[A-Za-z]{3,})/i.test(cleanText(text)) ? rec.q15_concert : 0;
+  rec.q16_sporting_event = /16\..{0,180}(?:[A-Za-z]{3,})/i.test(cleanText(text)) ? rec.q16_sporting_event : 0;
+  rec.q17_tv_shows = /17\..{0,180}(?:[A-Za-z]{3,})/i.test(cleanText(text)) ? rec.q17_tv_shows : 0;
+  applyTextRules(rec, text);
+}
+function applyTextRules(rec, text){
+  rec.q1_other_text = sectionAnswer(text, /(?:##\s*)?1\..*?(?:current job|trabajo actual)/i, /\n\s*2\.|2\.\s*Check/i, /(?:Other|Otro):\s*/i);
+  rec.q4_other_text = sectionAnswer(text, /(?:##\s*)?4\..*?(?:biggest challenges|desaf[ií]os|retos)/i, /\n\s*5\.|5\.\s*We know/i, /(?:Other,\s*write your answer here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  rec.q7_other_text = sectionAnswer(text, /\n\s*7\..*?(?:housing|alojamiento)/i, /\n\s*8\.|8\.\s*Think/i, /(?:Other,\s*write your answer here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  rec.q9_other_text = sectionAnswer(text, /\n\s*9\..*?(?:benefits|beneficios)/i, /\n\s*10\.|10\.\s*What are your top/i, /(?:Other,\s*write ideas here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  rec.q10_other_text = sectionAnswer(text, /\n\s*10\..*?(?:financial concerns|preocupaciones financieras)/i, /\n\s*11\.|11\.\s*(?:If you've|Si ha)/i, /(?:Other,\s*write ideas here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  rec.q11_other_text = sectionAnswer(text, /\n\s*11\..*?(?:financial stress|estr[eé]s financiero)/i, /\n\s*12\.|12\.\s*(?:Which social|Qué redes)/i, /(?:Other,\s*write ideas here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  rec.q12_other_text = sectionAnswer(text, /\n\s*12\..*?(?:social media|redes sociales)/i, /\n\s*13\.|13\.\s*(?:Which influencers|Qué cuentas)/i, /(?:Other,\s*write ideas\s*here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  rec.q14_other_text = sectionAnswer(text, /\n\s*(?:##\s*)?14\..*?(?:music|m[uú]sica)/i, /\n\s*15\.|15\.\s*(?:If you could|Si pudiera)/i, /(?:Other,\s*write ideas here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+
+  const q13 = textBetween(text,
+    /13\.\s*(?:Which influencers[\s\S]*?regularly\?|Qué cuentas[\s\S]*?escuchar\?)/i,
+    /(?:14\.|What types of music|Qué tipo de música)/i
+  );
+  if(q13 && !looksLikePrintedPrompt(q13) && !/^##?\s*14\b/i.test(q13)) rec.q13_influencers = q13;
+
+  const thoughts = textBetween(text,
+    /(?:Any other thoughts you'd like to share\?|Algo más que desee compartir con nosotros\?)/i,
+    /(?:Would you like to (?:get|receive) updates|Le gustar[ií]a recibir actualizaciones|#####\s*(?:First|Nombre))/i
+  );
+  if(thoughts && !looksLikePrintedPrompt(thoughts)) rec.other_thoughts = thoughts;
+
+  const firstNameTable = tableAfterLabel(text, /#####\s*(?:First Name|Nombre)\b/i);
+  const lastNameTable = tableAfterLabel(text, /#####\s*(?:Last Name|Apellido)\b/i);
+  const emailTable = tableAfterLabel(text, /#####\s*(?:Email|Correo electrónico)[\s\S]*?\)/i);
+  const phoneTable = tableAfterLabel(text, /#####\s*(?:Phone|Teléfono)\b/i);
+  if(firstNameTable) rec.contact_first_name = tableCellText(firstNameTable);
+  if(lastNameTable) rec.contact_last_name = tableCellText(lastNameTable);
+  if(emailTable) rec.contact_email = tableCellText(emailTable).replace(/[。]/g,'.').replace(/\s+/g,'');
+  if(phoneTable) rec.contact_phone = extractPhone(phoneTable);
+}
+function flatten(obj, prefix=''){
+  // flattens nested objects like {q1:{laborer:true}} -> q1_laborer; leaves flat objects untouched
+  const out = {};
+  for(const [k,v] of Object.entries(obj)){
+    const key = prefix ? prefix + '_' + k : k;
+    if(v !== null && typeof v === 'object' && !Array.isArray(v)) Object.assign(out, flatten(v, key));
+    else if(Array.isArray(v)) out[KEY_ALIASES[key] || key] = v.join('; ');
+    else out[KEY_ALIASES[key] || key] = v;
+  }
+  return out;
+}
+async function handleFiles(fileList){
+  const skipFlagged = $('skipFlagged').checked;
+  for(const f of fileList){
+    try{
+      const parsed = JSON.parse(await f.text());
+      const {recs, skipped} = normalize(parsed, skipFlagged);
+      records.push(...recs);
+      loadedFiles.push({name:f.name, count:recs.length, skipped});
+    }catch(e){
+      loadedFiles.push({name:f.name, count:0, error:e.message});
+    }
+  }
+  renderFileList();
+}
+function renderFileList(){
+  const el = $('fileList');
+  el.innerHTML = loadedFiles.map(f =>
+    f.error ? `<div class="bad">✗ ${f.name} — not valid JSON (${f.error})</div>`
+            : `<div class="ok">✓ ${f.name} — ${f.count} record(s)${f.skipped?`, ${f.skipped} flagged skipped`:''}</div>`).join('');
+  const total = records.length;
+  const msg = $('loadMsg');
+  if(total){ msg.className='flagline ok'; msg.textContent = `${total} record(s) loaded. Set options and build the table.`; $('btnBuild').disabled = false; }
+  else { msg.className='flagline bad'; msg.textContent = 'No records loaded yet.'; $('btnBuild').disabled = true; }
+}
+
+/* ---------- build ---------- */
+$('btnBuild').onclick = () => {
+  let recs = [...records];
+  const dd = $('dedupeCol').value.trim();
+  if(dd){
+    const map = new Map();
+    const passthrough = [];
+    for(const r of recs){
+      const key = Object.keys(r).find(k => k.toLowerCase() === dd.toLowerCase());
+      const val = key ? String(r[key] ?? '').trim() : '';
+      if(!val) passthrough.push(r);
+      else map.set(val, r);
+    }
+    recs = [...passthrough, ...map.values()];
+  }
+  let headers;
+  if($('colMode').value === 'custom'){
+    headers = $('headersBox').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(!headers.length){ alert('Custom column order selected but the header list is empty.'); return; }
+  } else {
+    headers = [];
+    const seen = new Set();
+    for(const r of recs) for(const k of Object.keys(r)) if(!seen.has(k)){ seen.add(k); headers.push(k); }
+  }
+  const as10 = $('boolMode').value === '10';
+  const conv = v => {
+    if(v === undefined || v === null) return '';
+    if(as10){ if(v === true) return 1; if(v === false) return 0; }
+    return v;
+  };
+  const rows = recs.map(r => headers.map(h => conv(r[h])));
+  built = {headers, rows};
+  // preview
+  $('thead').innerHTML = '<tr>' + headers.map(h=>`<th>${escHtml(h)}</th>`).join('') + '</tr>';
+  $('tbody').innerHTML = rows.map(row =>
+    '<tr>' + row.map(v=>`<td>${escHtml(v)}</td>`).join('') + '</tr>').join('');
+  $('counts').textContent = `${rows.length} rows × ${headers.length} columns`;
+  $('outCard').style.display = 'block';
+};
+function escHtml(v){ return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ---------- export ---------- */
+$('btnXlsx').onclick = () => {
+  const ws = XLSX.utils.aoa_to_sheet([built.headers, ...built.rows]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'data');
+  XLSX.writeFile(wb, 'json_converted.xlsx');
+};
+$('btnCsv').onclick = () => {
+  const esc = v => { v = v==null?'':String(v); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
+  const lines = [built.headers.map(esc).join(','), ...built.rows.map(r=>r.map(esc).join(','))];
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
+  a.download = 'json_converted.csv'; a.click();
+};
+</script>
+</body>
+</html>

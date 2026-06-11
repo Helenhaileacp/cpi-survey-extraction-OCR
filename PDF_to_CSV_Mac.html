@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF to CSV - Mac</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+  :root{
+    --ink:#16202b; --steel:#33414f; --paper:#f5f4f0; --line:#d8d5cc;
+    --accent:#e8650d; --accent-dk:#b84e06; --ok:#1d7a4f; --warn:#b3261e;
+    --card:#fff; --mono:ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--paper);color:var(--ink);min-height:100vh;padding:28px 20px 60px}
+  .wrap{max-width:1080px;margin:0 auto}
+  header{display:flex;align-items:baseline;justify-content:space-between;border-bottom:3px solid var(--ink);padding-bottom:14px;margin-bottom:22px;flex-wrap:wrap;gap:8px}
+  h1{font-size:21px}
+  header .sub{font-family:var(--mono);font-size:12px;color:var(--steel)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:20px;margin-bottom:16px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--steel);margin-bottom:12px}
+  label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--steel);margin:12px 0 4px}
+  input[type=text],input[type=password],input[type=number],textarea,select{font:inherit;font-size:13px;width:100%;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:#fff;color:var(--ink)}
+  textarea{font-family:var(--mono);font-size:12px;line-height:1.45;resize:vertical}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row3{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:12px}
+  @media(max-width:760px){.row2,.row3{grid-template-columns:1fr}}
+  .drop{border:2px dashed var(--line);border-radius:8px;padding:30px 20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+  .drop:hover,.drop.over{border-color:var(--accent);background:#fdf3ea}
+  .drop p{font-size:14px;color:var(--steel);line-height:1.45}
+  .drop strong{color:var(--ink)}
+  button{font:inherit;font-weight:600;font-size:14px;border:none;border-radius:6px;padding:11px 20px;cursor:pointer;transition:background .15s}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .btn-go{background:var(--accent);color:#fff}.btn-go:hover:not(:disabled){background:var(--accent-dk)}
+  .btn-quiet{background:#e9e7e0;color:var(--ink)}.btn-quiet:hover:not(:disabled){background:#ddd9cf}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+  .check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--steel);margin-top:10px}
+  .check input{width:auto}
+  .flagline{margin-top:12px;font-size:13px;padding:9px 12px;border-radius:6px;display:none}
+  .flagline.ok{display:block;background:#e9f4ee;color:var(--ok)}
+  .flagline.bad{display:block;background:#fbeae9;color:var(--warn)}
+  .flagline.busy{display:block;background:#eef1f5;color:var(--steel)}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--steel);position:sticky;top:0;background:#fff}
+  td{font-family:var(--mono)}
+  .tablebox{max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:12px}
+  .note{font-size:12.5px;color:var(--steel);line-height:1.5;margin-top:10px}
+  .filelist{font-family:var(--mono);font-size:12px;color:var(--steel);margin-top:10px}
+  .filelist .ok{color:var(--ok)} .filelist .bad{color:var(--warn)}
+  .progress-shell{height:14px;background:#e9e7e0;border-radius:7px;overflow:hidden;margin:10px 0 8px}
+  .progress-bar{height:100%;width:0;background:repeating-linear-gradient(45deg,var(--accent),var(--accent) 12px,var(--accent-dk) 12px,var(--accent-dk) 24px);transition:width .25s;border-radius:7px}
+  .pstats{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--steel);flex-wrap:wrap;gap:6px}
+  details summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--steel);margin:10px 0 4px}
+  .pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:#e9f4ee;color:var(--ok)}
+  .pill.flag{background:#fbeae9;color:var(--warn)}
+  #fileInput{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>PDF to CSV - Mac</h1>
+    <div class="sub">self-contained browser tool for Mac or PC → one combined CSV</div>
+  </header>
+
+  <div class="card">
+    <h2>1 · Load PDF</h2>
+    <div class="drop" id="drop">
+      <p><strong>Drop one or more .pdf files here</strong> or click to browse<br>
+      Selectable PDFs can be converted directly. Scanned/image-only PDFs can use free OCR in this browser.</p>
+    </div>
+    <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple>
+    <div class="filelist" id="fileList"></div>
+    <div class="flagline" id="loadMsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>2 · Options</h2>
+    <div class="row3">
+      <div>
+        <label>Extraction mode</label>
+        <select id="mode">
+          <option value="survey">Free survey OCR — survey columns + q8 answers</option>
+          <option value="ocr">OCR text — one row per page</option>
+          <option value="table">Selectable text table — detect columns by position</option>
+          <option value="lines">Selectable text lines — one cell per line</option>
+        </select>
+      </div>
+      <div>
+        <label>Pages (blank = all)</label>
+        <input type="text" id="pageRange" placeholder="e.g. 1-3,5">
+      </div>
+      <div>
+        <label>Column tolerance (pt)</label>
+        <input type="number" id="colTol" value="10" min="2" max="60" step="1">
+      </div>
+    </div>
+    <div class="row3" id="surveyOpts">
+      <div>
+        <label>Pages per survey</label>
+        <input type="number" id="packetSize" value="4" min="1" max="12">
+      </div>
+    </div>
+    <div id="freeBlock">
+      <div class="flagline ok" style="display:block">Free-only mode: OCR runs locally in your browser with Tesseract.js. No paid service key is needed.</div>
+      <details>
+        <summary>JSON schema</summary>
+        <textarea id="schemaBox" rows="10"></textarea>
+      </details>
+      <details>
+        <summary>Output headers</summary>
+        <textarea id="headersBox" rows="8"></textarea>
+        <p class="note">The Excel and CSV files always use these headers in this order. OCR/JSON output is flattened to these column names when possible.</p>
+      </details>
+    </div>
+    <div class="check"><input type="checkbox" id="sheetPerPage"><label for="sheetPerPage" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px">One Excel sheet per page for selectable text/OCR modes</label></div>
+    <div class="check"><input type="checkbox" id="firstHeader" checked><label for="firstHeader" style="margin:0;text-transform:none;letter-spacing:0;font-size:13px">Treat the first extracted row as headers in selectable text preview</label></div>
+    <div class="btnrow">
+      <button class="btn-go" id="btnConvert" disabled>Convert</button>
+      <button class="btn-quiet" id="btnClear">Clear files</button>
+    </div>
+    <div class="pstats" style="margin-top:12px"><span id="pLabel">Ready</span><span id="pEta"></span></div>
+    <div class="progress-shell"><div class="progress-bar" id="pBar"></div></div>
+    <p class="note">Free survey OCR groups every 4 pages into one row with the survey columns plus q8 answer text. It can read some typed/printed text, but checkboxes and handwriting may be missed, so unclear fields are left blank or 0.</p>
+  </div>
+
+  <div class="card" id="outCard" style="display:none">
+    <h2>3 · Result</h2>
+    <div class="btnrow" style="margin-top:0">
+      <button class="btn-go" id="btnCsv">Download CSV</button>
+      <button class="btn-quiet" id="btnXlsx">Download Excel (.xlsx)</button>
+      <button class="btn-quiet" id="btnJson">Download JSON</button>
+      <span class="note" id="counts" style="margin:0"></span>
+    </div>
+    <div class="tablebox">
+      <table><thead id="thead"></thead><tbody id="tbody"></tbody></table>
+    </div>
+    <p class="note">Preview shows all rows and all columns. Each download is one combined file containing everything.</p>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const $ = id => document.getElementById(id);
+let files = [];
+let result = { sheets: [], records: [] };
+let allRows = [];
+let progressTotal = 0;
+let progressDone = 0;
+
+const SURVEY_HEADERS = [
+"survey_id","language","q1_laborer","q1_equipment_operator","q1_foreman","q1_site_leadership","q1_quality_commissioning","q1_electrician","q1_other","q1_other_text","q2_solv","q2_renewableworks","q2_other_subcontractor","q3_solar","q3_battery_storage","q4_being_on_road","q4_long_hours","q4_lack_management_support","q4_need_safety_training","q4_coworkers_need_skills","q4_hard_time_housing","q4_inconsistent_schedule","q4_physical_demands","q4_right_tools_supplies","q4_other","q4_other_text","q5_1_month","q5_2_3_months","q5_4_5_months","q5_6plus_months","q6_grow_career","q6_more_pay","q6_retirement_savings","q6_healthcare","q6_safety_priority","q6_paid_time_off","q6_discounts_boots_tools","q6_company_truck","q6_coworkers_known","q6_longer_income_guarantee","q6_better_weather","q6_closer_family","q6_supportive_culture","q7_rv_campground","q7_hotel_motel","q7_apartment","q7_airbnb_vrbo","q7_other","q7_other_text","q8_worried_money","q8_balance_work_home","q8_injured_kept_working","q8_mental_health","q8_proper_training","q9_low_cost_training","q9_career_mentorship","q9_off_season_work","q9_discounts_tools","q9_realtime_advice","q9_year_round_health_ins","q9_mobile_clinic","q9_certifications","q9_financial_advice","q9_mental_health_support","q9_jobs_board","q9_other","q9_other_text","q10_monthly_bills","q10_daily_costs","q10_savings_big_things","q10_pay_truck","q10_pay_down_debt","q10_manage_finances","q10_invest_money","q10_other","q10_other_text","q11_short_term_work","q11_workshops_finances","q11_build_credit","q11_trusted_person","q11_low_interest_loans","q11_app_track_finances","q11_discounts_items","q11_other","q11_other_text","q12_linkedin","q12_tiktok","q12_reddit","q12_whatsapp","q12_facebook","q12_discord","q12_instagram","q12_twitter_x","q12_other","q12_other_text","q13_influencers","q14_rock","q14_country","q14_spanish_latin","q14_hip_hop_rap","q14_pop","q14_other","q14_other_text","q15_concert","q16_sporting_event","q17_tv_shows","q18_0_1_years","q18_2_3_years","q18_4_5_years","q18_6_8_years","q18_9plus_years","q19_male","q19_female","q19_nonbinary","q19_trans","q20_white","q20_hispanic_latino","q20_black_african_american","q20_asian_pacific_islander","q20_native_american","q20_two_or_more","q20_other","q21_18_24","q21_25_29","q21_30_35","q21_36_40","q21_41_45","q21_46_50","q21_50plus","q22_english","q22_spanish","q22_other","q23_married_yes","q23_married_no","q24_kids_yes","q24_kids_no","q25_kids_travel_yes","q25_kids_travel_no","q25_kids_travel_sometimes","other_thoughts","contact_first_name","contact_last_name","contact_email","contact_phone"
+];
+const Q8_ANSWER_HEADERS = ["q8_worried_money_answer","q8_balance_work_home_answer","q8_injured_kept_working_answer","q8_mental_health_answer","q8_proper_training_answer"];
+const q8InsertAt = SURVEY_HEADERS.indexOf("q9_low_cost_training");
+if(q8InsertAt >= 0 && !SURVEY_HEADERS.includes(Q8_ANSWER_HEADERS[0])) SURVEY_HEADERS.splice(q8InsertAt, 0, ...Q8_ANSWER_HEADERS);
+const TEXT_FIELDS = new Set(["survey_id","language","q1_other_text","q4_other_text","q7_other_text","q9_other_text","q10_other_text","q11_other_text","q12_other_text","q13_influencers","q14_other_text","other_thoughts","contact_first_name","contact_last_name","contact_email","contact_phone", ...Q8_ANSWER_HEADERS]);
+const ALIASES = {
+  q5_one_month:"q5_1_month", q5_two_three_months:"q5_2_3_months", q5_four_five_months:"q5_4_5_months", q5_six_plus_months:"q5_6plus_months",
+  q18_0_1_years:"q18_0_1_years", q18_2_3_years:"q18_2_3_years", q18_4_5_years:"q18_4_5_years", q18_6_8_years:"q18_6_8_years",
+  contact_first_name:"contact_first_name", contact_last_name:"contact_last_name", contact_email:"contact_email", contact_phone:"contact_phone"
+};
+const DEFAULT_PROMPT = `You are extracting structured survey data from a scanned PDF containing Construction Worker Survey responses.
+
+The PDF contains multiple complete survey responses. Each response spans four consecutive pages:
+- Page 1 contains Survey ID and questions 1-6.
+- Page 2 contains questions 7-10.
+- Page 3 contains questions 11-19.
+- Page 4 contains questions 20-25, other_thoughts, and contact fields.
+
+For each four-page packet, return exactly one complete survey record.
+
+Follow the JSON schema and output headers exactly. Use these flat column names in the final JSON object:
+${SURVEY_HEADERS.join(", ")}
+
+Checkbox rules:
+- Checked boxes, X marks, filled boxes, or clearly circled options = true.
+- Empty boxes, unclear marks, scan noise, or stray marks = false.
+- For "Check all that apply", "TOP 2", and "TOP 3", mark every clearly selected option as true.
+- Do not infer ranking, order, priority, or intent.
+
+Text rules:
+- Extract exact visible handwritten or typed answer text.
+- If blank or unclear, return "".
+- Do not guess, autocomplete, normalize, translate, summarize, or clean up free-text answers.
+- Do not copy printed question text, instructions, headers, logos, page numbers, or option labels into answer fields.
+
+Survey ID and language:
+- Extract survey_id exactly as shown on page 1, e.g. CPI-000139.
+- Use language "English" or "Spanish" when clear. If unclear, return "".
+
+Special rules:
+- q8 is a grid. Set a q8 field to true only when that row contains a clearly visible selected response.
+- q13_influencers is free text.
+- q15_concert, q16_sporting_event, and q17_tv_shows are booleans. Set true only if a visible answer is written for that question.
+- q20 says "Circle all that apply"; treat clearly circled, checked, or otherwise clearly marked options as true.
+
+Return only JSON. No markdown, comments, explanations, or prose.`;
+const DEFAULT_SCHEMA = `{
+  "type": "object",
+  "required": ${JSON.stringify(SURVEY_HEADERS, null, 2)},
+  "properties": ${JSON.stringify(Object.fromEntries(SURVEY_HEADERS.map(h => [h, {type: TEXT_FIELDS.has(h) ? "string" : "boolean"}])), null, 2)}
+}`;
+
+$('schemaBox').value = DEFAULT_SCHEMA;
+$('headersBox').value = SURVEY_HEADERS.join('\n');
+
+$('drop').onclick = () => $('fileInput').click();
+$('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('over'); };
+$('drop').ondragleave = () => $('drop').classList.remove('over');
+$('drop').ondrop = e => { e.preventDefault(); $('drop').classList.remove('over'); addFiles(e.dataTransfer.files); };
+$('fileInput').onchange = e => addFiles(e.target.files);
+$('btnClear').onclick = () => { files = []; result={sheets:[],records:[]}; allRows=[]; renderFileList(); $('outCard').style.display='none'; setProgress(0,0,'Ready'); };
+$('mode').onchange = () => {
+  const survey = $('mode').value === 'survey';
+  $('surveyOpts').style.display = survey ? 'grid' : 'none';
+  $('freeBlock').style.display = survey ? 'block' : 'none';
+};
+$('mode').onchange();
+
+function addFiles(list){
+  for(const f of list) if(/\.pdf$/i.test(f.name) || f.type === 'application/pdf') files.push(f);
+  renderFileList();
+}
+function renderFileList(){
+  $('fileList').innerHTML = files.map(f => `<div class="ok">&#10003; ${escHtml(f.name)} — ${(f.size/1024).toFixed(0)} KB</div>`).join('');
+  const msg = $('loadMsg');
+  if(files.length){ msg.className='flagline ok'; msg.textContent = `${files.length} file(s) ready. Set options and convert.`; $('btnConvert').disabled = false; }
+  else { msg.className='flagline bad'; msg.textContent = 'No PDF files loaded yet.'; $('btnConvert').disabled = true; }
+}
+function parseRange(str, max){
+  str = str.trim();
+  if(!str) return Array.from({length:max}, (_,i)=>i+1);
+  const out = new Set();
+  for(const part of str.split(',')){
+    const m = part.trim().match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+    if(!m) continue;
+    const a = +m[1], b = m[2] ? +m[2] : +m[1];
+    for(let i=Math.min(a,b); i<=Math.max(a,b) && i<=max; i++) if(i>=1) out.add(i);
+  }
+  return [...out].sort((x,y)=>x-y);
+}
+function setProgress(done,total,label){
+  progressDone=done; progressTotal=total;
+  $('pBar').style.width = total ? `${Math.round(done/total*100)}%` : '0';
+  $('pLabel').textContent = label || `${done} / ${total}`;
+  $('pEta').textContent = total ? `${done} / ${total}` : '';
+}
+
+async function extractPage(page, mode, colTol){
+  const tc = await page.getTextContent();
+  const items = tc.items.filter(it => it.str && it.str.trim() !== '').map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width, h: it.height || Math.abs(it.transform[3]) || 10 }));
+  if(!items.length) return [];
+  items.sort((a,b) => b.y - a.y || a.x - b.x);
+  const rows = [];
+  let cur = null;
+  for(const it of items){
+    const tol = Math.max(2, it.h * 0.5);
+    if(cur && Math.abs(cur.y - it.y) <= tol) cur.items.push(it);
+    else { cur = { y: it.y, items: [it] }; rows.push(cur); }
+  }
+  for(const r of rows){
+    r.items.sort((a,b)=>a.x-b.x);
+    const merged = [];
+    for(const it of r.items){
+      const last = merged[merged.length-1];
+      const avgChar = it.str.length ? Math.max(2, it.w / it.str.length) : 4;
+      if(last && (it.x - (last.x + last.w)) < avgChar * 1.2){
+        const gap = it.x - (last.x + last.w);
+        last.str += (gap > avgChar * 0.35 ? ' ' : '') + it.str;
+        last.w = (it.x + it.w) - last.x;
+      } else merged.push({ ...it });
+    }
+    r.cells = merged;
+  }
+  if(mode === 'lines') return rows.map(r => [ r.cells.map(c => c.str).join(' ').trim() ]).filter(r => r[0] !== '');
+  const xs = [];
+  for(const r of rows) for(const c of r.cells) xs.push(c.x);
+  xs.sort((a,b)=>a-b);
+  const anchors = [];
+  for(const x of xs){
+    const last = anchors[anchors.length-1];
+    if(last && x - last.max <= colTol){ last.max = x; last.sum += x; last.n++; }
+    else anchors.push({ min:x, max:x, sum:x, n:1 });
+  }
+  const centers = anchors.map(a => a.sum / a.n);
+  return rows.map(r => {
+    const out = new Array(centers.length).fill('');
+    for(const c of r.cells){
+      let best = 0, bd = Infinity;
+      for(let i=0;i<centers.length;i++){ const d = Math.abs(c.x - centers[i]); if(d < bd){ bd = d; best = i; } }
+      out[best] = out[best] ? out[best] + ' ' + c.str : c.str;
+    }
+    return out.map(s => s.trim());
+  }).filter(r => r.some(v => v !== ''));
+}
+async function selectablePageText(pdf, pageNum){
+  const rows = await extractPage(await pdf.getPage(pageNum), 'lines', 10);
+  return rows.map(r => r[0]).join('\n').trim();
+}
+function shouldUseSelectableSurveyText(text){
+  const clean = cleanText(text);
+  if(clean.length < 120) return false;
+  return /\b(?:survey|construction worker|current job|biggest challenges|financial|language|CPI[-\s]?\d{3,6})\b/i.test(clean);
+}
+
+async function renderPageImage(pdf, pageNum, scale=1.7){
+  const page = await pdf.getPage(pageNum);
+  const viewport = page.getViewport({scale});
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+  await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
+  return canvas;
+}
+async function ocrPdf(pdf, pages, stem, perPage){
+  const sheets = [];
+  const stacked = [['file','page','ocr_text']];
+  let worker = null;
+  if(window.Tesseract && Tesseract.createWorker){
+    worker = await Tesseract.createWorker('eng');
+  }
+  for(const p of pages){
+    setProgress(++progressDone, progressTotal, `OCR reading ${stem}, page ${p}`);
+    const canvas = await renderPageImage(pdf, p, 2);
+    let text = '';
+    if(worker) text = (await worker.recognize(canvas)).data.text || '';
+    else text = (await Tesseract.recognize(canvas, 'eng')).data.text || '';
+    const rows = [['file','page','ocr_text'], [stem, p, text.trim()]];
+    if(perPage) sheets.push({name:`${stem.slice(0,24)} p${p}`.slice(0,31), rows});
+    else stacked.push([stem, p, text.trim()]);
+  }
+  if(worker) await worker.terminate();
+  if(!perPage) sheets.push({name:stem.slice(0,31)||'ocr', rows:stacked});
+  return sheets;
+}
+
+function flatten(obj, prefix=''){
+  const out = {};
+  for(const [k,v] of Object.entries(obj || {})){
+    const key = prefix ? `${prefix}_${k}` : k;
+    if(v && typeof v === 'object' && !Array.isArray(v)) Object.assign(out, flatten(v, key));
+    else out[key] = v;
+  }
+  return out;
+}
+function blankRecord(headers){
+  const r = {};
+  for(const h of headers) r[h] = TEXT_FIELDS.has(h) ? '' : 0;
+  return r;
+}
+function normalizeRecord(raw, headers){
+  const flat = flatten(raw);
+  const r = blankRecord(headers);
+  for(const [k,v] of Object.entries(flat)){
+    const key = headers.includes(k) ? k : ALIASES[k];
+    if(!key || !headers.includes(key)) continue;
+    if(TEXT_FIELDS.has(key)) r[key] = v == null ? '' : String(v).trim();
+    else r[key] = (v === true || v === 1 || v === '1' || String(v).toLowerCase() === 'true') ? 1 : 0;
+  }
+  return r;
+}
+function cleanText(s){
+  return String(s || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&[#a-z0-9]+;/gi, ' ')
+    .replace(/[‐‑–—]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function stripPrintedAnswerNoise(s){
+  return cleanText(s)
+    .replace(/\$[^$]*\$/g, '')
+    .replace(/[☐☑□✓✔×]/g, '')
+    .replace(/\bImage\b/gi, '')
+    .replace(/^[:_\-\s]+/, '')
+    .replace(/_{2,}/g, '')
+    .replace(/\bOther,\s*(write|escriba).*/i, '')
+    .replace(/\bOtro,\s*escriba.*/i, '')
+    .replace(/\bhere:?\s*/i, '')
+    .replace(/\baqu[ií]:?\s*/i, '')
+    .trim();
+}
+function looksLikePrintedPrompt(s){
+  return !s ||
+    /^#+$/.test(s) ||
+    /Please share any other ideas/i.test(s) ||
+    /Por favor comparta cualquier otra idea/i.test(s) ||
+    /Would you like to (?:get|receive) updates/i.test(s) ||
+    /Le gustar[ií]a recibir actualizaciones/i.test(s) ||
+    /All information is anonymous/i.test(s) ||
+    /Toda esta información es anónima/i.test(s) ||
+    /^\d+\.\s/.test(s) ||
+    /Check your TOP|Check 1 box|Marque|Marca todas/i.test(s) ||
+    /We know it is difficult|Think about your co-workers/i.test(s) ||
+    /Which benefits|What are your top financial/i.test(s);
+}
+function textBetween(text, startRegex, endRegex){
+  const clean = cleanText(text);
+  const start = startRegex.exec(clean);
+  if(!start) return '';
+  const from = start.index + start[0].length;
+  const rest = clean.slice(from);
+  const end = endRegex ? endRegex.exec(rest) : null;
+  return stripPrintedAnswerNoise(end ? rest.slice(0, end.index) : rest);
+}
+function rawSection(text, startRegex, endRegex){
+  const raw = String(text || '');
+  const start = startRegex.exec(raw);
+  if(!start) return '';
+  const rest = raw.slice(start.index + start[0].length);
+  const end = endRegex ? endRegex.exec(rest) : null;
+  return end ? rest.slice(0, end.index) : rest;
+}
+function sameLineAnswer(section, labelRegex){
+  const raw = String(section || '').replace(/<[^>]+>/g, '\n');
+  const lines = raw.split(/\r?\n/);
+  for(const line of lines){
+    const m = labelRegex.exec(line);
+    if(!m) continue;
+    let candidate = line.slice(m.index + m[0].length);
+    candidate = stripPrintedAnswerNoise(candidate);
+    if(looksLikePrintedPrompt(candidate)) return '';
+    return candidate;
+  }
+  return '';
+}
+function freeTextAnswer(section, labelRegex){
+  const raw = String(section || '').replace(/<[^>]+>/g, '\n');
+  const m = labelRegex.exec(raw);
+  if(!m) return '';
+  const after = raw.slice(m.index + m[0].length);
+  const lines = after.split(/\r?\n/).map(stripPrintedAnswerNoise).filter(Boolean);
+  const answerLines = [];
+  for(const line of lines){
+    if(looksLikePrintedPrompt(line)) break;
+    if(/^(?:Other|Otro)\b/i.test(line)) continue;
+    if(/^\d+\.\s/.test(line)) break;
+    if(/^(?:Laborer|Equipment|Foreman|Site|Quality|Electrician|Being on the road|Long hours|Lack of|Need for|Co-workers|Hard time|Inconsistent|Physical|Not having|RV\/Campground|Hotel\/Motel|Apartment|Airbnb|VRBO)\b/i.test(line)) continue;
+    answerLines.push(line);
+    if(answerLines.join(' ').length > 300) break;
+  }
+  const answer = answerLines.join(' ').trim();
+  return looksLikePrintedPrompt(answer) ? '' : answer;
+}
+function sectionAnswer(text, startRegex, endRegex, labelRegex){
+  const section = rawSection(text, startRegex, endRegex);
+  return sameLineAnswer(section, labelRegex) || freeTextAnswer(section, labelRegex);
+}
+function checkedNear(text, labelRegex){
+  const clean = cleanText(text);
+  const m = labelRegex.exec(clean);
+  if(!m) return false;
+  const start = m.index;
+  const before = clean.slice(Math.max(0, start - 12), start);
+  const after = clean.slice(start, Math.min(clean.length, start + m[0].length + 8));
+  if(/[☑✓✔×X/]/.test(before) || /^[\s:;,-]*[☑✓✔×X/]/.test(after)) return true;
+  if(/[☐□○O]\s*$/.test(before)) return false;
+  const lineStart = clean.lastIndexOf('.', start) + 1;
+  const segment = clean.slice(Math.max(0, lineStart), Math.min(clean.length, start + m[0].length + 80));
+  return !/[☐□]\s*$/.test(before) && /[☐□☑✓✔×X/]/.test(segment) && start - lineStart < 8;
+}
+function applyDefs(rec, text, defs){
+  for(const [field, ...patterns] of defs){
+    if(patterns.some(p => checkedNear(text, p))) rec[field] = 1;
+  }
+}
+function gridRowText(text, rowRegex){
+  const clean = cleanText(text);
+  const m = rowRegex.exec(clean);
+  if(!m) return '';
+  return clean.slice(m.index, Math.min(clean.length, m.index + 420));
+}
+function gridRowChecked(text, rowRegex){
+  return /[☑✓✔×X/]/.test(gridRowText(text, rowRegex));
+}
+function q8Answer(text, rowRegex){
+  const row = gridRowText(text, rowRegex);
+  if(!row) return '';
+  const marks = /[☑✓✔×X/]/.test(row);
+  if(!marks) return '';
+  const ordered = [
+    ["N/A", /N\/A/i],
+    ["All", /\bAll\b|Todos/i],
+    ["Most", /\bMost\b|Bastante/i],
+    ["About half", /About\s*(?:half|1\/2)|Medio/i],
+    ["A few", /A few|Algunos/i],
+    ["None", /\bNone\b|Ninguno/i]
+  ];
+  for(const [label, pattern] of ordered){
+    const m = pattern.exec(row);
+    if(!m) continue;
+    const near = row.slice(Math.max(0, m.index - 20), Math.min(row.length, m.index + m[0].length + 20));
+    if(/[☑✓✔×X/]/.test(near)) return label;
+  }
+  return '';
+}
+function applySurveyRules(rec, text){
+  applyDefs(rec, text, [
+    ['q1_laborer', /Laborer\/Installer/i, /Obrero/i],
+    ['q1_equipment_operator', /Equipment Operator/i, /Operador de Equipo/i],
+    ['q1_foreman', /Foreman/i, /Mayordomo/i],
+    ['q1_site_leadership', /Site Leadership/i, /Liderazgo de sitio/i],
+    ['q1_quality_commissioning', /Quality\/Commissioning/i, /Calidad/i],
+    ['q1_electrician', /Electrician/i, /Electricista/i],
+    ['q1_other', /Other:/i, /Otro:/i],
+    ['q2_solv', /Employee of Solv/i],
+    ['q2_renewableworks', /Employee of RenewableWorks/i],
+    ['q2_other_subcontractor', /other subcontractor/i, /otro subcontratista/i],
+    ['q3_solar', /Solar/i],
+    ['q3_battery_storage', /Battery storage/i, /almacenamiento/i],
+    ['q4_being_on_road', /Being on the road/i, /Estar en camino/i],
+    ['q4_long_hours', /Long hours/i, /Largas horas/i],
+    ['q4_lack_management_support', /Lack of management support/i, /Falta de apoyo/i],
+    ['q4_need_safety_training', /Need for more safety/i, /seguridad/i],
+    ['q4_coworkers_need_skills', /co-workers need more skills/i, /compa.+habilidades/i],
+    ['q4_hard_time_housing', /Hard time finding housing/i, /hospedaje/i],
+    ['q4_inconsistent_schedule', /Inconsistent schedule/i, /Horario.+inconsistente/i],
+    ['q4_physical_demands', /Physical demands/i, /Demandas fisicas/i],
+    ['q4_right_tools_supplies', /right tools/i, /herramientas/i],
+    ['q5_1_month', /1 month/i, /1 mes/i],
+    ['q5_2_3_months', /2\s*-\s*3 months/i],
+    ['q5_4_5_months', /4\s*-\s*5 months/i],
+    ['q5_6plus_months', /6\+ months/i, /6 meses/i],
+    ['q6_grow_career', /Opportunities to grow/i, /crecer/i],
+    ['q6_more_pay', /More pay/i, /mejor pago/i],
+    ['q6_retirement_savings', /retirement savings/i, /401K/i],
+    ['q6_healthcare', /healthcare/i, /seguro medico/i],
+    ['q6_safety_priority', /Safety prioritized/i],
+    ['q6_paid_time_off', /Paid time off/i],
+    ['q6_discounts_boots_tools', /Discounts on things I need/i, /boots, tools, gas/i],
+    ['q6_company_truck', /company truck/i, /camioneta/i],
+    ['q6_coworkers_known', /Coworkers who I know/i],
+    ['q6_longer_income_guarantee', /guaranteed income/i],
+    ['q6_better_weather', /weather conditions/i],
+    ['q6_closer_family', /closer to my family/i],
+    ['q6_supportive_culture', /Supportive company culture/i]
+  ]);
+  applyDefs(rec, text, [
+    ['q7_rv_campground', /RV\/Campground/i, /RV\/ sitio/i],
+    ['q7_hotel_motel', /Hotel\/Motel/i],
+    ['q7_apartment', /Apartment/i, /Apartamento/i],
+    ['q7_airbnb_vrbo', /Airbnb|VRBO/i],
+    ['q9_low_cost_training', /Low-cost training/i, /entrenamiento accesibles/i],
+    ['q9_career_mentorship', /Career mentorship/i, /avanzar en su carrera/i],
+    ['q9_off_season_work', /off-season/i, /meses lentos/i],
+    ['q9_discounts_tools', /Discounts on items like tools/i, /herramientas o equipo/i],
+    ['q9_realtime_advice', /Real-time technical advice/i, /Consejos técnicos/i],
+    ['q9_year_round_health_ins', /Year-round health insurance/i, /Seguro de salud/i],
+    ['q9_mobile_clinic', /mobile clinic/i, /clínica móvil/i],
+    ['q9_certifications', /Certifications/i, /Certificaciones/i],
+    ['q9_financial_advice', /Financial advice/i, /Asesoramiento financiero/i],
+    ['q9_mental_health_support', /Mental health support/i, /Apoyo emocional/i],
+    ['q9_jobs_board', /jobs board/i, /ofertas de trabajo/i],
+    ['q10_monthly_bills', /monthly bills/i, /biles mensuales/i],
+    ['q10_daily_costs', /daily costs/i, /costos diarios/i],
+    ['q10_savings_big_things', /savings.+big things/i, /cosas grandes/i],
+    ['q10_pay_truck', /truck or camper/i, /camioneta o camper/i],
+    ['q10_pay_down_debt', /Paying down other kinds of debt/i, /otros tipos de deudas/i],
+    ['q10_manage_finances', /manage my finances/i, /administrar mis finanzas/i],
+    ['q10_invest_money', /invest/i, /invertir/i]
+  ]);
+  const q8Defs = [
+    ['q8_worried_money', 'q8_worried_money_answer', /worried about money|preocupados por dinero/i],
+    ['q8_balance_work_home', 'q8_balance_work_home_answer', /balance work and home|balance en su trabajo/i],
+    ['q8_injured_kept_working', 'q8_injured_kept_working_answer', /injured on the job|accidentes/i],
+    ['q8_mental_health', 'q8_mental_health_answer', /mental health challenges|problemas emocionales/i],
+    ['q8_proper_training', 'q8_proper_training_answer', /proper training|entrenamiento apropiado/i]
+  ];
+  for(const [boolField, answerField, pattern] of q8Defs){
+    const ans = q8Answer(text, pattern);
+    if(ans){ rec[boolField] = 1; rec[answerField] = ans; }
+    else rec[boolField] = gridRowChecked(text, pattern) ? 1 : rec[boolField];
+  }
+  applyDefs(rec, text, [
+    ['q11_short_term_work', /short-term work/i, /trabajo de corto plazo/i],
+    ['q11_workshops_finances', /Workshops on managing finances/i, /Talleres.+finanzas/i],
+    ['q11_build_credit', /credit score/i, /puntaje de crédito/i],
+    ['q11_trusted_person', /Someone I trust/i, /Alguien de confianza/i],
+    ['q11_low_interest_loans', /Low-interest/i, /Prestamos de bajo/i],
+    ['q11_app_track_finances', /app to track finances/i, /aplicación.+finanzas/i],
+    ['q11_discounts_items', /Discounts on common items/i],
+    ['q12_linkedin', /LinkedIn/i],
+    ['q12_tiktok', /TikTok/i],
+    ['q12_reddit', /Reddit/i],
+    ['q12_whatsapp', /WhatsApp/i],
+    ['q12_facebook', /Facebook/i],
+    ['q12_discord', /Discord/i],
+    ['q12_instagram', /Instagram/i],
+    ['q12_twitter_x', /Twitter\/X/i],
+    ['q14_rock', /Rock/i],
+    ['q14_country', /Country/i],
+    ['q14_spanish_latin', /Spanish\/Latin|Español\/ Latino/i],
+    ['q14_hip_hop_rap', /Hip Hop/i, /Reggaet/i],
+    ['q14_pop', /Pop/i],
+    ['q18_0_1_years', /0\s*-\s*1 years|0\s*-\s*1 año/i],
+    ['q18_2_3_years', /2\s*-\s*3 years|2\s*-\s*3 años/i],
+    ['q18_4_5_years', /4\s*-\s*5 years|4\s*-\s*5 años/i],
+    ['q18_6_8_years', /6\s*-\s*8 years|6\s*-\s*8 años/i],
+    ['q18_9plus_years', /9\+ years|9 o más/i],
+    ['q19_male', /Male|Masculino/i],
+    ['q19_female', /Female|Femenino/i],
+    ['q19_nonbinary', /Nonbinary|No binario/i],
+    ['q19_trans', /Trans/i]
+  ]);
+  applyDefs(rec, text, [
+    ['q20_white', /White|Blanco/i],
+    ['q20_hispanic_latino', /Hispanic\/Latino|Hispano/i],
+    ['q20_black_african_american', /Black\/African American|Afroamericano/i],
+    ['q20_asian_pacific_islander', /Asian\/Pacific Islander|Asiático/i],
+    ['q20_native_american', /Native American|Nativo/i],
+    ['q20_two_or_more', /Two or more|Dos o más/i],
+    ['q21_18_24', /18\s*-\s*24/i],
+    ['q21_25_29', /25\s*-\s*29/i],
+    ['q21_30_35', /30\s*-\s*35/i],
+    ['q21_36_40', /36\s*-\s*40/i],
+    ['q21_41_45', /41\s*-\s*45/i],
+    ['q21_46_50', /46\s*-\s*50/i],
+    ['q21_50plus', /50\+/i],
+    ['q22_english', /English|Ingles/i],
+    ['q22_spanish', /Spanish|Español/i],
+    ['q23_married_yes', /Yes|Si/i],
+    ['q23_married_no', /No/i],
+    ['q24_kids_yes', /Yes|Si/i],
+    ['q24_kids_no', /No/i],
+    ['q25_kids_travel_yes', /Yes|Si/i],
+    ['q25_kids_travel_no', /No/i],
+    ['q25_kids_travel_sometimes', /Sometimes|A veces/i]
+  ]);
+  applyTextRules(rec, text);
+}
+function applyTextRules(rec, text){
+  rec.q1_other_text = sectionAnswer(text, /(?:##\s*)?1\..*?(?:current job|trabajo actual)/i, /\n\s*2\.|2\.\s*Check/i, /(?:Other|Otro):\s*/i);
+  rec.q4_other_text = sectionAnswer(text, /(?:##\s*)?4\..*?(?:biggest challenges|desaf[ií]os|retos)/i, /\n\s*5\.|5\.\s*We know/i, /(?:Other,\s*write your answer here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  rec.q7_other_text = sectionAnswer(text, /\n\s*7\..*?(?:housing|alojamiento)/i, /\n\s*8\.|8\.\s*Think/i, /(?:Other,\s*write your answer here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  rec.q9_other_text = sectionAnswer(text, /\n\s*9\..*?(?:benefits|beneficios)/i, /\n\s*10\.|10\.\s*What are your top/i, /(?:Other,\s*write ideas here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  rec.q10_other_text = sectionAnswer(text, /\n\s*10\..*?(?:financial concerns|preocupaciones financieras)/i, /\n\s*11\.|11\.\s*(?:If you've|Si ha)/i, /(?:Other,\s*write ideas here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  rec.q11_other_text = sectionAnswer(text, /\n\s*11\..*?(?:financial stress|estr[eé]s financiero)/i, /\n\s*12\.|12\.\s*(?:Which social|Qué redes)/i, /(?:Other,\s*write ideas here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  rec.q12_other_text = sectionAnswer(text, /\n\s*12\..*?(?:social media|redes sociales)/i, /\n\s*13\.|13\.\s*(?:Which influencers|Qué cuentas)/i, /(?:Other,\s*write ideas\s*here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  rec.q14_other_text = sectionAnswer(text, /\n\s*(?:##\s*)?14\..*?(?:music|m[uú]sica)/i, /\n\s*15\.|15\.\s*(?:If you could|Si pudiera)/i, /(?:Other,\s*write ideas here:?|Otro,\s*escriba su respuesta aqu[ií]:?)\s*/i);
+  const q13 = textBetween(text, /13\.\s*(?:Which influencers[\s\S]*?regularly\?|Qué cuentas[\s\S]*?escuchar\?)/i, /(?:14\.|What types of music|Qué tipo de música)/i);
+  if(q13 && !looksLikePrintedPrompt(q13) && !/^##?\s*14\b/i.test(q13)) rec.q13_influencers = q13;
+  const thoughts = textBetween(text, /(?:Any other thoughts you'd like to share\?|Algo más que desee compartir con nosotros\?)/i, /(?:Would you like to (?:get|receive) updates|Le gustar[ií]a recibir actualizaciones|First name|Nombre)/i);
+  if(thoughts && !looksLikePrintedPrompt(thoughts)) rec.other_thoughts = thoughts;
+}
+async function surveyExtractPdf(pdf, pages, stem){
+  const headers = $('headersBox').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const packetSize = Math.max(1, parseInt($('packetSize').value,10)||4);
+  const sheets = [];
+  const rows = [headers];
+  const records = [];
+  const usable = pages.length - (pages.length % packetSize);
+  if(usable !== pages.length) $('loadMsg').textContent = `Warning: ${pages.length} selected pages is not divisible by ${packetSize}; the last ${pages.length-usable} page(s) will be skipped.`;
+  let worker = null;
+  for(let i=0; i<usable; i += packetSize){
+    const packetPages = pages.slice(i, i+packetSize);
+    const pageTexts = [];
+    for(const p of packetPages){
+      setProgress(progressDone, progressTotal, `Reading ${stem}, page ${p}`);
+      let text = await selectablePageText(pdf, p);
+      if(!shouldUseSelectableSurveyText(text)){
+        if(!worker) worker = await Tesseract.createWorker('eng');
+        setProgress(progressDone, progressTotal, `OCR reading ${stem}, page ${p}`);
+        const canvas = await renderPageImage(pdf, p, 1.65);
+        text = (await worker.recognize(canvas)).data.text || '';
+      }
+      pageTexts.push(text.trim());
+      setProgress(++progressDone, progressTotal, `Read ${stem}, page ${p}`);
+    }
+    setProgress(progressDone, progressTotal, `Building survey row ${Math.floor(i/packetSize)+1}`);
+    const rawText = pageTexts.join('\n\n--- PAGE BREAK ---\n\n');
+    const rec = buildFreeOcrSurveyRecord(rawText, headers);
+    const notes = rec.survey_id ? 'Free OCR draft. Review checkbox and handwriting fields.' : 'Free OCR draft. Survey ID not found; review this packet.';
+    records.push({file:stem, pages:packetPages, status:'REVIEW', notes, ocr_text:rawText, data:rec});
+    rows.push(headers.map(h => rec[h] ?? (TEXT_FIELDS.has(h) ? '' : 0)));
+  }
+  if(worker) await worker.terminate();
+  sheets.push({name:(stem.slice(0,24) || 'survey'), rows});
+  return {sheets, records};
+}
+function buildFreeOcrSurveyRecord(rawText, headers){
+  const rec = blankRecord(headers);
+  const id = rawText.match(/\bCPI[-\s]?\d{3,6}\b/i);
+  if(id) rec.survey_id = id[0].toUpperCase().replace(/\s+/g,'-');
+  if(/\bespa[ñn]ol\b|\bspanish\b|masculino|casado|hijos menores|idioma principal/i.test(rawText)) rec.language = 'Spanish';
+  else if(/\benglish\b|construction worker survey/i.test(rawText)) rec.language = 'English';
+  applySurveyRules(rec, rawText);
+  return rec;
+}
+
+$('btnConvert').onclick = async () => {
+  const msg = $('loadMsg');
+  msg.className='flagline busy'; msg.textContent='Converting...';
+  $('btnConvert').disabled = true;
+  result = {sheets:[], records:[]}; allRows = [];
+  const mode = $('mode').value;
+  const colTol = Math.max(2, +$('colTol').value || 10);
+  const perPage = $('sheetPerPage').checked;
+  let pagesDone = 0, emptyPages = 0;
+  try{
+    const pdfs = [];
+    for(const f of files){
+      const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise;
+      const pages = parseRange($('pageRange').value, pdf.numPages);
+      pdfs.push({f,pdf,pages,stem:f.name.replace(/\.pdf$/i,'').slice(0,28)||'pdf'});
+    }
+    progressTotal = mode === 'survey'
+      ? pdfs.reduce((n,x)=>n + (x.pages.length - (x.pages.length % Math.max(1, parseInt($('packetSize').value,10)||4))),0)
+      : pdfs.reduce((n,x)=>n+x.pages.length,0);
+    progressDone = 0; setProgress(0,progressTotal,'Starting');
+    for(const {f,pdf,pages,stem} of pdfs){
+      if(mode === 'survey'){
+        const out = await surveyExtractPdf(pdf, pages, stem);
+        result.sheets.push(...out.sheets); result.records.push(...out.records);
+        continue;
+      }
+      if(mode === 'ocr'){
+        result.sheets.push(...await ocrPdf(pdf, pages, stem, perPage));
+        continue;
+      }
+      let stacked = [];
+      for(const p of pages){
+        setProgress(++progressDone, progressTotal, `Reading ${f.name}, page ${p}`);
+        const rows = await extractPage(await pdf.getPage(p), mode, colTol);
+        pagesDone++;
+        if(!rows.length){ emptyPages++; continue; }
+        if(perPage) result.sheets.push({name:`${stem} p${p}`.slice(0,31), rows});
+        else stacked.push(...rows);
+      }
+      if(!perPage && stacked.length) result.sheets.push({name:stem.slice(0,31)||'data', rows:stacked});
+    }
+  }catch(e){
+    msg.className='flagline bad'; msg.textContent='Conversion failed: '+e.message;
+    $('btnConvert').disabled=false; return;
+  }
+  $('btnConvert').disabled=false;
+  if(!result.sheets.length){
+    msg.className='flagline bad';
+    msg.textContent = mode === 'table' || mode === 'lines'
+      ? 'No text found. This PDF is probably scanned (image-only). Try OCR text mode or Survey OCR/AI mode.'
+      : 'No rows were extracted.';
+    $('outCard').style.display='none';
+    return;
+  }
+  msg.className='flagline ok';
+  msg.textContent = mode === 'survey'
+    ? `Done — ${result.records.length} survey record(s) extracted.`
+    : `Done — ${pagesDone || progressDone} page(s) read${emptyPages ? `, ${emptyPages} empty/skipped` : ''}.`;
+  renderPreview();
+};
+
+function mergedRows(){
+  const all = [];
+  for(const s of result.sheets) all.push(...s.rows);
+  return all;
+}
+function combinedRowsForExport(){
+  if($('mode').value === 'survey'){
+    const headers = $('headersBox').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    return [headers, ...result.records.map(r => headers.map(h => r.data?.[h] ?? (TEXT_FIELDS.has(h) ? '' : 0)))];
+  }
+  const sheets = result.sheets.filter(s => s.rows && s.rows.length);
+  if(!sheets.length) return [];
+  const combined = [];
+  for(const s of sheets){
+    for(let i=0; i<s.rows.length; i++){
+      const row = s.rows[i];
+      const looksLikeRepeatedHeader = combined.length && i === 0 && row.length === combined[0].length && row.every((v, ix) => String(v) === String(combined[0][ix]));
+      if(!looksLikeRepeatedHeader) combined.push(row);
+    }
+  }
+  return combined;
+}
+function renderPreview(){
+  const rows = mergedRows();
+  const survey = $('mode').value === 'survey';
+  const maxCols = rows.reduce((m,r)=>Math.max(m,r.length), 0);
+  const useHeader = survey || ($('firstHeader').checked && rows.length > 1);
+  const head = useHeader ? rows[0] : Array.from({length:maxCols}, (_,i)=>'C'+(i+1));
+  const body = useHeader ? rows.slice(1) : rows;
+  $('thead').innerHTML = '<tr>' + head.map(h=>`<th>${escHtml(h)}</th>`).join('') + '</tr>';
+  $('tbody').innerHTML = body.map(r =>
+    '<tr>' + Array.from({length:maxCols}, (_,i)=>`<td>${escHtml(r[i] ?? '')}</td>`).join('') + '</tr>').join('');
+  $('counts').textContent = `${Math.max(0, rows.length - (useHeader?1:0))} rows x ${maxCols} columns · ${result.sheets.length} sheet(s)`;
+  $('outCard').style.display='block';
+}
+function escHtml(v){ return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+$('btnXlsx').onclick = () => {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(combinedRowsForExport()), 'combined');
+  XLSX.writeFile(wb, $('mode').value === 'survey' ? 'survey_extracted.xlsx' : 'pdf_converted.xlsx');
+};
+$('btnCsv').onclick = () => {
+  const esc = v => { v = v==null?'':String(v); return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; };
+  const lines = combinedRowsForExport().map(r => r.map(esc).join(','));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
+  a.download = $('mode').value === 'survey' ? 'survey_extracted.csv' : 'pdf_converted.csv'; a.click();
+};
+$('btnJson').onclick = () => {
+  const data = $('mode').value === 'survey' ? result.records : result.sheets;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+  a.download = $('mode').value === 'survey' ? 'survey_extracted.json' : 'pdf_converted.json'; a.click();
+};
+</script>
+</body>
+</html>
