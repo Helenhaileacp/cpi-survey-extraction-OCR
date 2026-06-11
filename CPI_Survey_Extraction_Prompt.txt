@@ -1,0 +1,72 @@
+You are extracting structured survey data from a scanned PDF containing Construction Worker Survey responses.
+
+SOURCE STRUCTURE:
+- The PDF contains multiple complete survey responses.
+- Each complete survey response spans four consecutive pages.
+- Page 1 of each response contains Survey ID and questions 1-6.
+- Page 2 of each response contains questions 7-10.
+- Page 3 of each response contains questions 11-19.
+- Page 4 of each response contains questions 20-25, other_thoughts, and contact fields.
+- Process the entire PDF from beginning to end.
+- Combine each consecutive four-page packet into one complete survey record.
+- Do not combine pages from different survey responses.
+- Do not treat a single page as a complete survey response.
+
+EXPECTED OUTPUT COUNT:
+- Output one record per complete four-page survey packet.
+- If the PDF has 532 pages, output 133 survey records.
+- If the page count is not divisible by four, stop and flag the issue.
+
+SCHEMA REQUIREMENTS:
+- Follow the provided JSON schema exactly.
+- Always include all fields in the schema.
+- Use the schema field names exactly.
+- Do not add extra fields.
+- Do not omit fields.
+
+CHECKBOX AND SELECTION RULES:
+- Checked boxes, X marks, filled boxes, or clearly circled options = true.
+- Empty boxes = false.
+- Unclear marks, scan noise, or stray marks = false.
+- For "Check all that apply" questions, mark every clearly selected option as true.
+- For "TOP 3" questions, mark only clearly checked boxes as true.
+- Do not infer ranking, order, priority, or intent.
+
+TEXT FIELD RULES:
+- Extract exact visible handwritten or typed answer text.
+- If the answer is blank, return "".
+- If the answer is unclear, return "".
+- Do not guess, autocomplete, normalize, translate, summarize, or clean up free-text answers.
+- Do not copy printed question text, instructions, headers, logos, page numbers, or option labels into answer fields.
+
+SURVEY ID AND LANGUAGE:
+- Extract Survey ID exactly as shown on page 1 of each four-page packet, e.g. CPI-000139.
+- Determine language from the survey form and/or the q22 language checkbox.
+- Use "English" or "Spanish" when clear.
+- If language is unclear, return "" rather than guessing.
+
+CONTACT FIELDS:
+- Extract contact fields only when visibly filled.
+- If blank or unclear, return "".
+
+QUESTION-SPECIFIC RULES:
+- q8 is a grid on the paper form, but the schema contains booleans. Set a q8 field to true only when that row contains a clearly visible selected response. Otherwise false.
+- q13 is a free-text field. Return visible answer text only, or "".
+- q15, q16, and q17 are free-text prompts on the paper form, but the schema defines them as booleans. Set each to true only if a visible answer is written for that question; otherwise false.
+- q20 says "Circle all that apply" on the paper form. Treat clearly circled, checked, or otherwise clearly marked options as true.
+
+OUTPUT FORMAT:
+- Return one JSON array for the full PDF.
+- Each array item must be one complete survey response object.
+- The array length must equal the number of complete four-page survey packets.
+- Do not include explanations, markdown, comments, or prose.
+
+QUALITY CONTROL BEFORE FINAL OUTPUT:
+- Confirm every record has a survey_id.
+- Confirm every record follows the schema exactly.
+- Confirm all unchecked boxes are false.
+- Confirm all blank or unclear text fields are "".
+- Confirm no printed question text was inserted into answer fields.
+- Confirm the final record count equals total PDF pages divided by four.
+
+Accuracy is critical. When unsure, return false or "" instead of guessing.
