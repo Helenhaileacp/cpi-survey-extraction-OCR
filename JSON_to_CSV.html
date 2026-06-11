@@ -146,7 +146,7 @@ $('fileInput').onchange = e => handleFiles(e.target.files);
 
 function normalize(parsed, skipFlagged){
   // Returns {recs:[], skipped:n}
-  let arr = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.results) ? parsed.results : [parsed]);
+  let arr = extractRecordItems(parsed);
   const recs = []; let skipped = 0;
   if(isPaddlePageArray(arr)){
     const packetSize = Math.max(1, parseInt($('packetSize').value,10) || 4);
@@ -159,7 +159,12 @@ function normalize(parsed, skipFlagged){
   for(const item of arr){
     if(item == null) continue;
     // extractor format: {packet, status, notes, data:{...}}
-    if(typeof item === 'object' && item.data && typeof item.data === 'object'){
+    if(Array.isArray(item)){
+      for(const sub of item) if(sub && typeof sub === 'object') recs.push(flatten(sub));
+    } else if(typeof item === 'object' && Array.isArray(item.data)){
+      if(skipFlagged && item.status === 'flag'){ skipped += item.data.length; continue; }
+      for(const sub of item.data) if(sub && typeof sub === 'object') recs.push(flatten(sub));
+    } else if(typeof item === 'object' && item.data && typeof item.data === 'object'){
       if(skipFlagged && item.status === 'flag'){ skipped++; continue; }
       recs.push(flatten(item.data));
     } else if(typeof item === 'object'){
@@ -167,6 +172,27 @@ function normalize(parsed, skipFlagged){
     }
   }
   return {recs, skipped};
+}
+function extractRecordItems(value){
+  if(Array.isArray(value)) return value;
+  if(!value || typeof value !== 'object') return [];
+  const recordArrayKeys = ['results','records','responses','items','rows','data'];
+  for(const key of recordArrayKeys){
+    if(Array.isArray(value[key])) return value[key];
+  }
+  for(const key of recordArrayKeys){
+    if(value[key] && typeof value[key] === 'object'){
+      const nested = extractRecordItems(value[key]);
+      if(nested.length && (key === 'data' || !(nested.length === 1 && nested[0] === value[key]))) return nested;
+    }
+  }
+  for(const child of Object.values(value)){
+    if(child && typeof child === 'object'){
+      const nested = extractRecordItems(child);
+      if(nested.length && !(nested.length === 1 && nested[0] === child)) return nested;
+    }
+  }
+  return [value];
 }
 function isPaddlePageArray(arr){
   return Array.isArray(arr) && arr.length > 1 && arr.every(item =>
@@ -263,8 +289,27 @@ function sameLineAnswer(section, labelRegex){
   }
   return '';
 }
+function freeTextAnswer(section, labelRegex){
+  const raw = String(section || '').replace(/<[^>]+>/g, '\n');
+  const m = labelRegex.exec(raw);
+  if(!m) return '';
+  const after = raw.slice(m.index + m[0].length);
+  const lines = after.split(/\r?\n/).map(stripPrintedAnswerNoise).filter(Boolean);
+  const answerLines = [];
+  for(const line of lines){
+    if(looksLikePrintedPrompt(line)) break;
+    if(/^(?:Other|Otro)\b/i.test(line)) continue;
+    if(/^\d+\.\s/.test(line)) break;
+    if(/^(?:Laborer|Equipment|Foreman|Site|Quality|Electrician|Being on the road|Long hours|Lack of|Need for|Co-workers|Hard time|Inconsistent|Physical|Not having|RV\/Campground|Hotel\/Motel|Apartment|Airbnb|VRBO)\b/i.test(line)) continue;
+    answerLines.push(line);
+    if(answerLines.join(' ').length > 300) break;
+  }
+  const answer = answerLines.join(' ').trim();
+  return looksLikePrintedPrompt(answer) ? '' : answer;
+}
 function sectionAnswer(text, startRegex, endRegex, labelRegex){
-  return sameLineAnswer(rawSection(text, startRegex, endRegex), labelRegex);
+  const section = rawSection(text, startRegex, endRegex);
+  return sameLineAnswer(section, labelRegex) || freeTextAnswer(section, labelRegex);
 }
 function tableAfterLabel(text, labelRegex){
   const raw = String(text || '');

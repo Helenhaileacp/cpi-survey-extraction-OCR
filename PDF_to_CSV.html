@@ -298,6 +298,15 @@ async function extractPage(page, mode, colTol){
     return out.map(s => s.trim());
   }).filter(r => r.some(v => v !== ''));
 }
+async function selectablePageText(pdf, pageNum){
+  const rows = await extractPage(await pdf.getPage(pageNum), 'lines', 10);
+  return rows.map(r => r[0]).join('\n').trim();
+}
+function shouldUseSelectableSurveyText(text){
+  const clean = cleanText(text);
+  if(clean.length < 120) return false;
+  return /\b(?:survey|construction worker|current job|biggest challenges|financial|language|CPI[-\s]?\d{3,6})\b/i.test(clean);
+}
 
 async function renderPageImage(pdf, pageNum, scale=1.7){
   const page = await pdf.getPage(pageNum);
@@ -419,8 +428,27 @@ function sameLineAnswer(section, labelRegex){
   }
   return '';
 }
+function freeTextAnswer(section, labelRegex){
+  const raw = String(section || '').replace(/<[^>]+>/g, '\n');
+  const m = labelRegex.exec(raw);
+  if(!m) return '';
+  const after = raw.slice(m.index + m[0].length);
+  const lines = after.split(/\r?\n/).map(stripPrintedAnswerNoise).filter(Boolean);
+  const answerLines = [];
+  for(const line of lines){
+    if(looksLikePrintedPrompt(line)) break;
+    if(/^(?:Other|Otro)\b/i.test(line)) continue;
+    if(/^\d+\.\s/.test(line)) break;
+    if(/^(?:Laborer|Equipment|Foreman|Site|Quality|Electrician|Being on the road|Long hours|Lack of|Need for|Co-workers|Hard time|Inconsistent|Physical|Not having|RV\/Campground|Hotel\/Motel|Apartment|Airbnb|VRBO)\b/i.test(line)) continue;
+    answerLines.push(line);
+    if(answerLines.join(' ').length > 300) break;
+  }
+  const answer = answerLines.join(' ').trim();
+  return looksLikePrintedPrompt(answer) ? '' : answer;
+}
 function sectionAnswer(text, startRegex, endRegex, labelRegex){
-  return sameLineAnswer(rawSection(text, startRegex, endRegex), labelRegex);
+  const section = rawSection(text, startRegex, endRegex);
+  return sameLineAnswer(section, labelRegex) || freeTextAnswer(section, labelRegex);
 }
 function checkedNear(text, labelRegex){
   const clean = cleanText(text);
@@ -626,24 +654,30 @@ async function surveyExtractPdf(pdf, pages, stem){
   const records = [];
   const usable = pages.length - (pages.length % packetSize);
   if(usable !== pages.length) $('loadMsg').textContent = `Warning: ${pages.length} selected pages is not divisible by ${packetSize}; the last ${pages.length-usable} page(s) will be skipped.`;
-  const worker = await Tesseract.createWorker('eng');
+  let worker = null;
   for(let i=0; i<usable; i += packetSize){
     const packetPages = pages.slice(i, i+packetSize);
     const pageTexts = [];
     for(const p of packetPages){
-      setProgress(progressDone, progressTotal, `OCR reading ${stem}, page ${p}`);
-      const canvas = await renderPageImage(pdf, p, 2);
-      const text = (await worker.recognize(canvas)).data.text || '';
+      setProgress(progressDone, progressTotal, `Reading ${stem}, page ${p}`);
+      let text = await selectablePageText(pdf, p);
+      if(!shouldUseSelectableSurveyText(text)){
+        if(!worker) worker = await Tesseract.createWorker('eng');
+        setProgress(progressDone, progressTotal, `OCR reading ${stem}, page ${p}`);
+        const canvas = await renderPageImage(pdf, p, 1.65);
+        text = (await worker.recognize(canvas)).data.text || '';
+      }
       pageTexts.push(text.trim());
+      setProgress(++progressDone, progressTotal, `Read ${stem}, page ${p}`);
     }
-    setProgress(++progressDone, progressTotal, `Building survey row ${Math.floor(i/packetSize)+1}`);
+    setProgress(progressDone, progressTotal, `Building survey row ${Math.floor(i/packetSize)+1}`);
     const rawText = pageTexts.join('\n\n--- PAGE BREAK ---\n\n');
     const rec = buildFreeOcrSurveyRecord(rawText, headers);
     const notes = rec.survey_id ? 'Free OCR draft. Review checkbox and handwriting fields.' : 'Free OCR draft. Survey ID not found; review this packet.';
     records.push({file:stem, pages:packetPages, status:'REVIEW', notes, ocr_text:rawText, data:rec});
     rows.push(headers.map(h => rec[h] ?? (TEXT_FIELDS.has(h) ? '' : 0)));
   }
-  await worker.terminate();
+  if(worker) await worker.terminate();
   sheets.push({name:(stem.slice(0,24) || 'survey'), rows});
   return {sheets, records};
 }
@@ -674,7 +708,7 @@ $('btnConvert').onclick = async () => {
       pdfs.push({f,pdf,pages,stem:f.name.replace(/\.pdf$/i,'').slice(0,28)||'pdf'});
     }
     progressTotal = mode === 'survey'
-      ? pdfs.reduce((n,x)=>n + Math.floor(x.pages.length / Math.max(1, parseInt($('packetSize').value,10)||4)),0)
+      ? pdfs.reduce((n,x)=>n + (x.pages.length - (x.pages.length % Math.max(1, parseInt($('packetSize').value,10)||4))),0)
       : pdfs.reduce((n,x)=>n+x.pages.length,0);
     progressDone = 0; setProgress(0,progressTotal,'Starting');
     for(const {f,pdf,pages,stem} of pdfs){
